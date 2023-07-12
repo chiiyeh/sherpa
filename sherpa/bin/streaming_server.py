@@ -93,6 +93,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
+import sentencepiece as spm
 import torch
 import websockets
 
@@ -588,6 +589,7 @@ class StreamingServer(object):
             max_queue=self.max_queue_size,
             process_request=self.process_request,
             ssl=ssl_context,
+            ping_timeout=None
         ):
             ip_list = ["0.0.0.0", "localhost", "127.0.0.1"]
             ip_list.append(socket.gethostbyname(socket.gethostname()))
@@ -643,15 +645,24 @@ class StreamingServer(object):
 
         stream = self.recognizer.create_stream()
 
-        while True:
+        old_hyp=''
+        IsSending=True
+        while IsSending:
             samples = await self.recv_audio_samples(socket)
+            gather_samples = samples
             if samples is None:
                 break
+            while gather_samples.size(dim=0) < 0 * sampling_rate:
+                samples = await self.recv_audio_samples(socket)
+                if samples is None:
+                    IsSending=False
+                    break
+                gather_samples = torch.cat([gather_samples, samples])
 
             # TODO(fangjun): At present, we assume the sampling rate
             # of the received audio samples equal to --sample-rate
             stream.accept_waveform(
-                sampling_rate=self.sample_rate, waveform=samples
+                sampling_rate=self.sample_rate, waveform=gather_samples
             )
 
             while self.recognizer.is_ready(stream):
@@ -666,9 +677,10 @@ class StreamingServer(object):
                     "timestamps": format_timestamps(result.timestamps),
                     "final": result.is_final,
                 }
-                print(message)
-
-                await socket.send(json.dumps(message))
+                if (hyp and (hyp != old_hyp)) or is_final:
+                    old_hyp = hyp
+                    await socket.send(json.dumps(message))
+            # logging.info('Time taken for processing: %s', time.perf_counter()-time_start)
 
         tail_padding = torch.rand(
             int(self.sample_rate * 0.3), dtype=torch.float32
