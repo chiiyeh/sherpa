@@ -232,9 +232,9 @@ int32_t main(int32_t argc, char *argv[]) {
 
         auto r = recognizer.GetResult(s.get());
 
-        if (!r.text.empty() && r.text != last) {
+        if (!r.text.empty() && r.is_final) {
           last = r.text;
-          std::cout << r.AsJsonString() << "\n";
+          std::cout << r.text;
         }
       }
 
@@ -245,9 +245,9 @@ int32_t main(int32_t argc, char *argv[]) {
       }
       auto r = recognizer.GetResult(s.get());
 
-      if (!r.text.empty() && r.text != last) {
+      if (!r.text.empty() && r.is_final) {
         last = r.text;
-        std::cout << r.AsJsonString() << ", size: " << r.text.size() << "\n";
+        std::cout << r.text;
       }
     } else {
       // For multiple waves, we don't use simulate streaming since
